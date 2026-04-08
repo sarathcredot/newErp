@@ -3,17 +3,25 @@ const qrcode = require('qrcode-terminal');
 
 let client = null;
 let isReady = false;
-let latestQR = null; // cached QR string for browser display
+let latestQR = null;
 
-/**
- * Initialize and boot the WhatsApp Web client.
- * Persists session data in ./.wwebjs_auth so you only scan the QR once.
- */
 async function initWhatsAppClient() {
+
+    const { execSync } = require('child_process');
+    try {
+        console.log('🔍 Chrome path:', execSync('find /opt/render/.cache/puppeteer -name "chrome" -type f').toString());
+    } catch (e) {
+        console.log('❌ Chrome not found in cache');
+    }
+
+
     client = new Client({
-        authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
+        authStrategy: new LocalAuth({
+            dataPath: '/opt/render/project/src/.wwebjs_auth'  // ← changed
+        }),
         puppeteer: {
             headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,  // ← added
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -27,23 +35,21 @@ async function initWhatsAppClient() {
         },
     });
 
-    // ── Events ────────────────────────────────────────────────────────────────
-
     client.on('qr', (qr) => {
-        latestQR = qr; // cache for browser endpoint
+        latestQR = qr;
         console.log('📲 Scan this QR code with your WhatsApp mobile app:\n');
         console.log(`🌐 Or open: ${process.env.SERVER_URL}/api/whatsapp/qr`);
         qrcode.generate(qr, { small: true });
     });
 
     client.on('authenticated', () => {
-        latestQR = null; // clear after auth
+        latestQR = null;
         console.log('✅ WhatsApp authenticated successfully');
     });
 
     client.on('ready', () => {
         isReady = true;
-        latestQR = null; // clear after ready
+        latestQR = null;
         console.log('✅ WhatsApp client is ready!');
     });
 
@@ -57,7 +63,6 @@ async function initWhatsAppClient() {
         console.warn('⚠️  WhatsApp client disconnected:', reason);
     });
 
-    // ── Incoming message handler ───────────────────────────────────────────────
     client.on('message', async (message) => {
         console.log(`📨 Message from ${message.from}: ${message.body}`);
         await handleIncomingMessage(message);
@@ -66,41 +71,22 @@ async function initWhatsAppClient() {
     client.on('message_create', async (message) => {
         if (message.fromMe) {
             console.log(`📤 You sent: ${message.body}`);
-            // handle self-sent message here
         }
     });
 
     await client.initialize();
 }
 
-/**
- * Basic chatbot logic — extend this function with your own rules.
- */
 async function handleIncomingMessage(message) {
     const body = message.body.trim().toLowerCase();
-
     if (body === 'ping') {
         await message.reply('pong 🏓');
         return;
     }
-
-    // Default: echo the message back (remove in production)
-    // await message.reply(`You said: ${message.body}`);
 }
 
-/**
- * Expose client + status for use in routes.
- */
-function getClient() {
-    return client;
-}
-
-function getClientStatus() {
-    return { isReady };
-}
-
-function getQRCode() {
-    return latestQR;
-}
+function getClient() { return client; }
+function getClientStatus() { return { isReady }; }
+function getQRCode() { return latestQR; }
 
 module.exports = { initWhatsAppClient, getClient, getClientStatus, getQRCode };
