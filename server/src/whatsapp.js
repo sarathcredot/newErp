@@ -1,27 +1,60 @@
+
+
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const path = require('path');
+const { execSync } = require('child_process');
 
+// ── Find or install Chrome ─────────────────────────────────────────────────
+function ensureChrome() {
+    const cacheDir = path.join(__dirname, '..', '.cache', 'puppeteer');
+
+    try {
+        const chromePath = execSync(
+            `find ${cacheDir} -name "chrome" -type f 2>/dev/null`
+        ).toString().trim();
+
+        if (chromePath) {
+            console.log('✅ Chrome found at:', chromePath);
+            return chromePath;
+        }
+    } catch (e) {}
+
+    console.log('⚙️ Chrome not found, installing now...');
+    try {
+        execSync('npx puppeteer browsers install chrome', {
+            stdio: 'inherit',
+            timeout: 120000,
+        });
+
+        const chromePath = execSync(
+            `find ${cacheDir} -name "chrome" -type f 2>/dev/null`
+        ).toString().trim();
+
+        console.log('✅ Chrome installed at:', chromePath);
+        return chromePath;
+    } catch (err) {
+        console.error('❌ Chrome install failed:', err.message);
+        return null;
+    }
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
 let client = null;
 let isReady = false;
 let latestQR = null;
 
+// ── Init ───────────────────────────────────────────────────────────────────
 async function initWhatsAppClient() {
-
-    const { execSync } = require('child_process');
-    try {
-        console.log('🔍 Chrome path:', execSync('find /opt/render/.cache/puppeteer -name "chrome" -type f').toString());
-    } catch (e) {
-        console.log('❌ Chrome not found in cache');
-    }
-
+    const chromePath = ensureChrome();
 
     client = new Client({
         authStrategy: new LocalAuth({
-             dataPath: './.wwebjs_auth' 
+            dataPath: './.wwebjs_auth',
         }),
         puppeteer: {
             headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,  // ← added
+            executablePath: chromePath || undefined,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -34,6 +67,8 @@ async function initWhatsAppClient() {
             ],
         },
     });
+
+    // ── Events ───────────────────────────────────────────────────────────────
 
     client.on('qr', (qr) => {
         latestQR = qr;
@@ -63,6 +98,8 @@ async function initWhatsAppClient() {
         console.warn('⚠️  WhatsApp client disconnected:', reason);
     });
 
+    // ── Incoming message handler ──────────────────────────────────────────────
+
     client.on('message', async (message) => {
         console.log(`📨 Message from ${message.from}: ${message.body}`);
         await handleIncomingMessage(message);
@@ -77,14 +114,17 @@ async function initWhatsAppClient() {
     await client.initialize();
 }
 
+// ── Message handler ────────────────────────────────────────────────────────
 async function handleIncomingMessage(message) {
     const body = message.body.trim().toLowerCase();
+
     if (body === 'ping') {
         await message.reply('pong 🏓');
         return;
     }
 }
 
+// ── Exports ────────────────────────────────────────────────────────────────
 function getClient() { return client; }
 function getClientStatus() { return { isReady }; }
 function getQRCode() { return latestQR; }
