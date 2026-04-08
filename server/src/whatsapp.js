@@ -17,7 +17,7 @@ async function initWhatsAppClient() {
 
     client = new Client({
         authStrategy: new LocalAuth({
-            dataPath: '/opt/render/project/src/.wwebjs_auth'  // ← changed
+             dataPath: './.wwebjs_auth' 
         }),
         puppeteer: {
             headless: true,
